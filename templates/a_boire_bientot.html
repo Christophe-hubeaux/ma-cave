@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block contenu %}
+
+<h1>⏰ À boire bientôt ({{ bouteilles|length }})</h1>
+
+{% if bouteilles|length == 0 %}
+    <p class="text-muted">Aucune bouteille à boire en priorité pour le moment.</p>
+{% else %}
+<div class="table-responsive">
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Nom</th>
+                <th>Domaine</th>
+                <th>Couleur</th>
+                <th>Millésime</th>
+                <th>Emplacement</th>
+                <th>À boire avant</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for b in bouteilles %}
+            <tr>
+                <td><a href="/bouteilles/{{ b.id }}">{{ b.nom }}</a></td>
+                <td>{{ b.domaine or "-" }}</td>
+                {% set couleur = b.couleur %}
+                <td>{% include "_badge_couleur.html" with context %}</td>
+                <td>{{ b.millesime or "-" }}</td>
+                <td>{{ b.emplacement or "-" }}</td>
+                <td>{{ b.annee_a_boire_fin }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<a href="/" class="btn btn-secondary">Retour à l'accueil</a>
+
+{% endblock %}

@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block contenu %}
+
+<h1>{% if bouteille %}Modifier{% else %}Ajouter{% endif %} une bouteille</h1>
+
+<div class="mb-4 p-3 border rounded bg-light">
+    <label class="form-label">Scanner une étiquette (optionnel)</label>
+    <input type="file" class="form-control" id="photo-etiquette" accept="image/*" capture="environment">
+    <div id="scan-statut" class="form-text"></div>
+</div>
+
+<form method="POST">
+    <div class="mb-3">
+        <label class="form-label">Nom *</label>
+        <input type="text" class="form-control" name="nom" required
+               value="{{ bouteille.nom if bouteille else '' }}">
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Domaine</label>
+        <input type="text" class="form-control" name="domaine"
+               value="{{ bouteille.domaine if bouteille else '' }}">
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Appellation</label>
+        <input type="text" class="form-control" name="appellation"
+               value="{{ bouteille.appellation if bouteille else '' }}">
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Couleur *</label>
+        <select class="form-select" name="couleur" id="couleur-select" required>
+            {% set couleur_actuelle = bouteille.couleur if bouteille else '' %}
+            <option value="Rouge" {% if couleur_actuelle == "Rouge" %}selected{% endif %}>Rouge</option>
+            <option value="Blanc" {% if couleur_actuelle == "Blanc" %}selected{% endif %}>Blanc</option>
+            <option value="Rosé" {% if couleur_actuelle == "Rosé" %}selected{% endif %}>Rosé</option>
+            <option value="Effervescent" {% if couleur_actuelle == "Effervescent" %}selected{% endif %}>Effervescent</option>
+        </select>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Cépage(s)</label>
+        <select multiple class="form-select" name="cepages" id="cepages-select" size="8">
+            {% for c in cepages %}
+            <option value="{{ c.id }}" data-couleurs="{{ c.couleurs|join(',') }}"
+                {% if c.id in cepages_selectionnes %}selected{% endif %}>
+                {{ c.nom }}
+            </option>
+            {% endfor %}
+        </select>
+        <div class="form-text">Maintiens Ctrl (ou Cmd sur Mac) pour sélectionner plusieurs cépages. La liste s'adapte à la couleur choisie.</div>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Millésime</label>
+        <input type="number" class="form-control" name="millesime"
+               value="{{ bouteille.millesime if bouteille else annee_defaut }}">
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Quantité *</label>
+        <input type="number" class="form-control" name="quantite" min="0" required
+               value="{{ bouteille.quantite if bouteille else 1 }}">
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Prix (€)</label>
+        <input type="number" step="0.01" class="form-control" name="prix"
+               value="{{ bouteille.prix if bouteille else '' }}">
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Emplacement</label>
+        <input type="text" class="form-control" name="emplacement"
+               value="{{ bouteille.emplacement if bouteille else '' }}">
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Note personnelle</label>
+        <textarea class="form-control" name="note">{{ bouteille.note if bouteille else '' }}</textarea>
+    </div>
+
+    <div class="row mb-3">
+        <div class="col">
+            <label class="form-label">Prêt à boire à partir de</label>
+            <input type="number" class="form-control" name="annee_debut"
+                   value="{{ bouteille.annee_a_boire_debut if bouteille else '' }}">
+        </div>
+        <div class="col">
+            <label class="form-label">À boire avant</label>
+            <input type="number" class="form-control" name="annee_fin"
+                   value="{{ bouteille.annee_a_boire_fin if bouteille else '' }}">
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Enregistrer</button>
+    <a href="/" class="btn btn-secondary">Annuler</a>
+</form>
+
+<script>
+function filtrerCepages() {
+    const couleur = document.getElementById('couleur-select').value;
+    const options = document.querySelectorAll('#cepages-select option');
+    options.forEach(opt => {
+        const couleurs = opt.dataset.couleurs ? opt.dataset.couleurs.split(',') : [];
+        opt.hidden = !couleurs.includes(couleur);
+        if (opt.hidden) opt.selected = false; // on désélectionne un cépage devenu incompatible
+    });
+}
+document.getElementById('couleur-select').addEventListener('change', filtrerCepages);
+document.addEventListener('DOMContentLoaded', filtrerCepages);
+
+document.getElementById('photo-etiquette').addEventListener('change', async function() {
+    const fichier = this.files[0];
+    if (!fichier) return;
+
+    const statut = document.getElementById('scan-statut');
+    statut.textContent = "Analyse de l'étiquette en cours...";
+
+    const formData = new FormData();
+    formData.append('photo', fichier);
+
+    try {
+        const reponse = await fetch('/scan-etiquette', { method: 'POST', body: formData });
+        const donnees = await reponse.json();
+
+        if (!reponse.ok) {
+            statut.textContent = "Erreur : " + (donnees.erreur || "impossible de lire l'étiquette");
+            return;
+        }
+
+        if (donnees.nom) document.querySelector('[name="nom"]').value = donnees.nom;
+        if (donnees.domaine) document.querySelector('[name="domaine"]').value = donnees.domaine;
+        if (donnees.appellation) document.querySelector('[name="appellation"]').value = donnees.appellation;
+        if (donnees.millesime) document.querySelector('[name="millesime"]').value = donnees.millesime;
+
+        if (donnees.couleur) {
+            document.getElementById('couleur-select').value = donnees.couleur;
+            filtrerCepages();
+        }
+
+        if (donnees.cepage_ids && donnees.cepage_ids.length) {
+            document.querySelectorAll('#cepages-select option').forEach(opt => {
+                opt.selected = donnees.cepage_ids.includes(parseInt(opt.value));
+            });
+        }
+
+        statut.textContent = "Étiquette analysée — vérifie les champs avant d'enregistrer.";
+    } catch (e) {
+        statut.textContent = "Erreur réseau lors de l'analyse.";
+    }
+});
+</script>
+
+{% endblock %}

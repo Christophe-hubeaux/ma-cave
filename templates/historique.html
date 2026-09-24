@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block contenu %}
+
+<h1>Historique des vins bus ({{ bouteilles|length }})</h1>
+
+{% if bouteilles|length == 0 %}
+    <p class="text-muted">Aucune bouteille terminée pour le moment.</p>
+{% else %}
+<div class="table-responsive">
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Nom</th>
+                <th>Domaine</th>
+                <th>Couleur</th>
+                <th>Millésime</th>
+                <th>Emplacement</th>
+                <th>Note</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for b in bouteilles %}
+            <tr>
+                <td><a href="/bouteilles/{{ b.id }}">{{ b.nom }}</a></td>
+                <td>{{ b.domaine or "-" }}</td>
+                {% set couleur = b.couleur %}
+                <td>{% include "_badge_couleur.html" with context %}</td>
+                <td>{{ b.millesime or "-" }}</td>
+                <td>{{ b.emplacement or "-" }}</td>
+                <td>{% set bouteille = b %}{% include "_etoiles.html" with context %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{% endblock %}

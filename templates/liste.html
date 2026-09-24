@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block contenu %}
+
+<div class="row mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title">{{ stats.nb_references }}</h5>
+                <p class="card-text text-muted">Référence(s)</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title">{{ stats.nb_bouteilles }}</h5>
+                <p class="card-text text-muted">Bouteille(s)</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title">{{ "%.2f"|format(stats.valeur_totale) }} €</h5>
+                <p class="card-text text-muted">Valeur totale</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title">
+                    {% for couleur, total in stats.repartition_couleurs.items() %}
+                        {{ couleur }}: {{ total }}{% if not loop.last %} · {% endif %}
+                    {% endfor %}
+                </h5>
+                <p class="card-text text-muted">Répartition</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if nb_a_boire_bientot > 0 %}
+<a href="/a-boire-bientot" class="text-decoration-none">
+    <div class="alert alert-warning alert-dismissible" style="cursor: pointer;">
+        <h4>⏰ À boire bientôt !</h4>
+        <ul class="mb-2">
+            {% for b in a_boire_bientot %}
+            <li>
+                {{ b.nom }} ({{ b.millesime or "?" }}) — à boire avant {{ b.annee_a_boire_fin }}
+            </li>
+            {% endfor %}
+        </ul>
+        <small class="text-dark">
+            Voir {% if nb_a_boire_bientot > 3 %}les {{ nb_a_boire_bientot }} bouteilles{% else %}la liste{% endif %} →
+        </small>
+    </div>
+</a>
+{% endif %}
+
+<h1>Ma cave 🍷</h1>
+
+<form method="GET" action="/" class="mb-4">
+    <div class="input-group">
+        <input type="text" class="form-control" name="recherche"
+               placeholder="Rechercher par nom ou domaine..." value="{{ recherche or '' }}">
+        <button class="btn btn-outline-secondary" type="submit">🔍 Rechercher</button>
+        {% if recherche %}
+        <a href="/" class="btn btn-outline-secondary">✕ Effacer</a>
+        {% endif %}
+    </div>
+</form>
+
+{% if bouteilles|length == 0 %}
+    {% if recherche %}
+        <p class="text-muted">Aucun vin ne correspond à ta recherche "{{ recherche }}".</p>
+    {% else %}
+        <p class="text-muted">Ta cave est vide pour le moment.</p>
+    {% endif %}
+{% else %}
+<div class="table-responsive">
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Nom</th>
+                <th>Domaine</th>
+                <th>Couleur</th>
+                <th>Millésime</th>
+                <th>Quantité</th>
+                <th>Emplacement</th>
+                <th>Note</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for b in bouteilles %}
+            <tr>
+                <td><a href="/bouteilles/{{ b.id }}">{{ b.nom }}</a></td>
+                <td>{{ b.domaine or "-" }}</td>
+                {% set couleur = b.couleur %}
+                <td>{% include "_badge_couleur.html" with context %}</td>
+                <td>{{ b.millesime or "-" }}</td>
+                <td>{{ b.quantite }}</td>
+                <td>{{ b.emplacement or "-" }}</td>
+                <td>{% set bouteille = b %}{% include "_etoiles.html" with context %}</td>
+                <td>
+                    <div class="d-flex flex-nowrap gap-1">
+                        <form method="POST" action="/bouteilles/{{ b.id }}/retirer">
+                            <button class="btn btn-action-icone btn-moins-une" title="J'en bois une">−1</button>
+                        </form>
+                        <form method="POST" action="/bouteilles/{{ b.id }}/supprimer"
+                            onsubmit="return confirm('Supprimer définitivement cette bouteille ?');">
+                            <button class="btn btn-action-icone btn-supprimer" title="Supprimer">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="3 6 5 6 21 6"></polyline>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                    <line x1="10" y1="11" x2="10" y2="17"></line>
+                                    <line x1="14" y1="11" x2="14" y2="17"></line>
+                                </svg>
+                            </button>                        
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ma Cave à Vin</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --couleur-fond: #FAF6F0;
+            --couleur-texte: #2B211D;
+            --couleur-texte-doux: #746657;
+            --couleur-primaire: #6B1F2E;
+            --couleur-primaire-sombre: #4E1621;
+            --couleur-or: #B8935A;
+            --couleur-or-clair: #FBF1DC;
+        }
+
+        body {
+            background-color: var(--couleur-fond);
+            color: var(--couleur-texte);
+            font-family: 'Source Sans 3', sans-serif;
+        }
+
+        h1, h2, h3, .navbar-brand {
+            font-family: 'Fraunces', serif;
+            font-weight: 600;
+            color: var(--couleur-primaire-sombre);
+        }
+
+        h1 {
+            border-bottom: 2px solid var(--couleur-or);
+            padding-bottom: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        a {
+            color: var(--couleur-primaire);
+        }
+        a:hover {
+            color: var(--couleur-primaire-sombre);
+        }
+
+        .navbar {
+            background-color: var(--couleur-primaire) !important;
+        }
+        .navbar-brand {
+            color: #fff !important;
+        }
+
+        .btn-primary {
+            background-color: var(--couleur-primaire);
+            border-color: var(--couleur-primaire);
+        }
+        .btn-primary:hover {
+            background-color: var(--couleur-primaire-sombre);
+            border-color: var(--couleur-primaire-sombre);
+        }
+
+        .btn-cave-accent {
+            background-color: var(--couleur-or);
+            border-color: var(--couleur-or);
+            color: var(--couleur-texte);
+            font-weight: 600;
+        }
+        .btn-cave-accent:hover {
+            background-color: #a17f4c;
+            border-color: #a17f4c;
+            color: var(--couleur-texte);
+        }
+
+        .btn-outline-secondary {
+            color: var(--couleur-primaire);
+            border-color: var(--couleur-primaire);
+        }
+        .btn-outline-secondary:hover {
+            background-color: var(--couleur-primaire);
+            border-color: var(--couleur-primaire);
+        }
+
+        .card {
+            border: none;
+            border-top: 3px solid var(--couleur-or);
+            box-shadow: 0 1px 4px rgba(43, 33, 29, 0.08);
+        }
+
+        .alert-warning {
+            background-color: var(--couleur-or-clair);
+            border-color: var(--couleur-or);
+            color: var(--couleur-texte);
+        }
+
+        table thead {
+            border-bottom: 2px solid var(--couleur-or);
+        }
+
+        .text-muted {
+            color: var(--couleur-texte-doux) !important;
+        }
+
+        .btn-action-icone {
+            width: 2.25rem;
+            height: 2.25rem;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            font-weight: 700;
+            border-radius: 0.375rem;
+            border: none;
+            color: #fff;
+        }
+
+        .btn-action-icone svg {
+            display: block;
+        }
+        .btn-moins-une {
+            background-color: #c9a227; /* à remplacer par ta couleur "or" exacte si tu en as une variable */
+        }
+        .btn-moins-une:hover {
+            background-color: #a8871f;
+            color: #fff;
+        }
+
+        .btn-supprimer {
+            background-color: #8b1e2f; /* à remplacer par ton "bordeaux" exact si tu en as une variable */
+        }
+        .btn-supprimer:hover {
+            background-color: #6f1725;
+            color: #fff;
+        }
+
+        /* Badges de type de vin */
+        .badge-cave {
+            display: inline-block;
+            padding: 0.3em 0.75em;
+            border-radius: 999px;
+            font-weight: 600;
+            font-size: 0.85em;
+            color: #fff;
+        }
+        .badge-rouge { background-color: #7A2333; }
+        .badge-blanc { background-color: #C9A227; color: var(--couleur-texte); }
+        .badge-rosé { background-color: #D98A93; color: var(--couleur-texte); }
+        .badge-effervescent { background-color: #C9B458; color: var(--couleur-texte); }
+
+        .etoiles { white-space: nowrap; }
+        .etoile { cursor: pointer; color: #ccc; font-size: 1.1rem; }
+        .etoile.pleine { color: #c9a227; } /* à ajuster selon ton doré exact */ 
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark mb-4">
+        <div class="container">
+            <a class="navbar-brand" href="/">Ma Cave à Vin 🍇</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#menuMobile">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse flex-grow-0" id="menuMobile">
+                <div class="d-flex flex-column flex-lg-row gap-2 mt-3 mt-lg-0">
+                    <a class="btn btn-outline-light" href="/historique">Historique</a>
+                    <a class="btn btn-cave-accent" href="/bouteilles/ajouter">+ Ajouter une bouteille</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        {% block contenu %}{% endblock %}
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('click', function(e) {
+            if (!e.target.classList.contains('etoile')) return;
+
+            const conteneur = e.target.closest('.etoiles');
+            const bouteilleId = conteneur.dataset.bouteilleId;
+            const noteActuelle = parseInt(conteneur.dataset.note) || 0;
+            const valeurCliquee = parseInt(e.target.dataset.valeur);
+            const nouvelleNote = (valeurCliquee === noteActuelle) ? 0 : valeurCliquee;
+
+            fetch(`/bouteilles/${bouteilleId}/noter`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ note: nouvelleNote })
+            })
+            .then(r => r.json())
+            .then(donnees => {
+                if (donnees.succes) {
+                    conteneur.dataset.note = nouvelleNote;
+                    conteneur.querySelectorAll('.etoile').forEach(etoile => {
+                        etoile.classList.toggle('pleine', parseInt(etoile.dataset.valeur) <= nouvelleNote);
+                    });
+                }
+            });
+        });
+</script>
+</body>
+</html>

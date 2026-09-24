@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block contenu %}
+
+<h1>{{ bouteille.nom }}</h1>
+<p><strong>Domaine :</strong> {{ bouteille.domaine or "-" }}</p>
+<p><strong>Appellation :</strong> {{ bouteille.appellation or "-" }}</p>
+<p><strong>Couleur :</strong> {% set couleur = bouteille.couleur %}{% include "_badge_couleur.html" with context %}</p>
+<p><strong>Millésime :</strong> {{ bouteille.millesime or "-" }}</p>
+<p><strong>Cépages :</strong> {% if cepages %}{{ cepages|map(attribute='nom')|join(', ') }}{% else %}-{% endif %}</p>
+<p><strong>Quantité :</strong> {{ bouteille.quantite }}</p>
+<p><strong>Prix :</strong> {{ bouteille.prix or "-" }} €</p>
+<p><strong>Emplacement :</strong> {{ bouteille.emplacement or "-" }}</p>
+<p><strong>Note :</strong> {{ bouteille.note or "-" }}</p>
+<p><strong>Fenêtre de consommation :</strong> {{ bouteille.annee_a_boire_debut or "?" }} - {{ bouteille.annee_a_boire_fin or "?" }}</p>
+<p><strong>Appréciation :</strong> {% include "_etoiles.html" with context %}</p>
+  
+<a href="/bouteilles/{{ bouteille.id }}/modifier" class="btn btn-primary">Modifier</a>
+<form method="POST" action="/bouteilles/{{ bouteille.id }}/supprimer" style="display:inline;"
+      onsubmit="return confirm('Supprimer définitivement cette bouteille ?');">
+    <button class="btn btn-danger">Supprimer</button>
+</form>
+<a href="/" class="btn btn-secondary">Retour</a>
+
+{% endblock %}
