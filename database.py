@@ -1,8 +1,13 @@
 import sqlite3
+import os
 from datetime import datetime
 
+# En local, la base reste "cave.db" dans le dossier du projet (comportement inchangé).
+# En production sur Render, on définira DB_PATH pour pointer vers le disque persistant.
+DB_PATH = os.environ.get("DB_PATH", "cave.db")
+
 def get_connection():
-    conn = sqlite3.connect("cave.db")
+    conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
