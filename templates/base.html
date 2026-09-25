@@ -15,6 +15,10 @@
             --couleur-primaire-sombre: #4E1621;
             --couleur-or: #B8935A;
             --couleur-or-clair: #FBF1DC;
+            --couleur-puce-rouge: #7A2333;
+            --couleur-puce-blanc: #C9A227;
+            --couleur-puce-rosé: #D98A93;
+            --couleur-puce-effervescent: #C9B458;
         }
 
         body {
@@ -85,6 +89,43 @@
             box-shadow: 0 1px 4px rgba(43, 33, 29, 0.08);
         }
 
+        .stat-carte .card-body {
+            padding: 1.1rem 1rem;
+        }
+        .stat-valeur {
+            font-family: 'Fraunces', serif;
+            font-weight: 600;
+            font-size: 1.85rem;
+            color: var(--couleur-primaire-sombre);
+            line-height: 1.1;
+            margin-bottom: 0.2rem;
+        }
+        .stat-label {
+            font-size: 0.85rem;
+            color: var(--couleur-texte-doux);
+        }
+        .stat-repartition {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.35rem;
+            justify-content: center;
+        }
+        .puce-couleur {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--couleur-texte);
+        }
+        .puce-couleur::before {
+            content: "";
+            width: 0.65rem;
+            height: 0.65rem;
+            border-radius: 50%;
+            background-color: var(--couleur-puce, var(--couleur-texte-doux));
+        }
+
         .alert-warning {
             background-color: var(--couleur-or-clair);
             border-color: var(--couleur-or);
@@ -149,27 +190,62 @@
         .etoiles { white-space: nowrap; }
         .etoile { cursor: pointer; color: #ccc; font-size: 1.1rem; }
         .etoile.pleine { color: #c9a227; } /* à ajuster selon ton doré exact */ 
+
+        .navbar-toggler {
+            border: none;
+            color: var(--couleur-or-clair);
+            padding: 0.45rem;
+            border-radius: 0.5rem;
+            line-height: 0;
+            box-shadow: none !important;
+            transition: background-color 0.15s ease;
+        }
+        .navbar-toggler:hover {
+            background-color: rgba(184, 147, 90, 0.18);
+        }
+        .navbar-toggler:focus-visible {
+            outline: 2px solid var(--couleur-or);
+            outline-offset: 2px;
+        }
+
+        .btn-nav {
+            padding: 0.5rem 1rem;
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        @media (max-width: 767.98px) {
+            #menuMobile {
+                background-color: var(--couleur-primaire-sombre);
+                border-radius: 0.5rem;
+                padding: 0.75rem 1rem 1rem;
+                margin-top: 0.5rem;
+            }
+        }
     </style>
 </head>
 <body>
-    <nav class="navbar navbar-dark mb-4">
+    <nav class="navbar navbar-dark navbar-expand-md mb-4">
         <div class="container">
             <a class="navbar-brand" href="/">Ma Cave à Vin 🍇</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#menuMobile">
-                <span class="navbar-toggler-icon"></span>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#menuMobile" aria-label="Ouvrir le menu">
+                <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <line x1="2" y1="5" x2="20" y2="5"/>
+                    <line x1="2" y1="11" x2="20" y2="11"/>
+                    <line x1="2" y1="17" x2="20" y2="17"/>
+                </svg>
             </button>
             <div class="collapse navbar-collapse flex-grow-0" id="menuMobile">
-                <div class="d-flex flex-column flex-lg-row align-items-lg-center gap-2 mt-3 mt-lg-0">
+                <div class="d-flex flex-column flex-md-row align-items-stretch align-items-md-center gap-2 mt-3 mt-md-0">
                     {% if session.user_id %}
-                        <a class="btn btn-outline-light" href="/historique">Historique</a>
-                        <a class="btn btn-cave-accent" href="/bouteilles/ajouter">+ Ajouter une bouteille</a>
-                        <span class="text-white ms-lg-2">{{ session.user_nom }}</span>
-                        <a class="btn btn-outline-light btn-sm" href="/deconnexion">Déconnexion</a>
+                        <a class="btn btn-outline-light btn-nav" href="/historique">Historique</a>
+                        <a class="btn btn-outline-light btn-nav" href="/deconnexion">Déconnexion</a>
                     {% endif %}
                 </div>
             </div>
         </div>
     </nav>
+
 
     <div class="container">
         {% block contenu %}{% endblock %}

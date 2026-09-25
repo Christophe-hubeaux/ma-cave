@@ -1,40 +1,44 @@
 {% extends "base.html" %}
 {% block contenu %}
 
-<div class="row mb-4">
-    <div class="col-6 col-md-3">
-        <div class="card text-center">
+<div class="row row-cols-2 row-cols-md-4 g-3 mb-4">
+    <div class="col">
+        <div class="card stat-carte text-center h-100">
             <div class="card-body">
-                <h5 class="card-title">{{ stats.nb_references }}</h5>
-                <p class="card-text text-muted">Référence(s)</p>
+                <div class="stat-valeur">{{ stats.nb_references }}</div>
+                <p class="stat-label mb-0">Référence(s)</p>
             </div>
         </div>
     </div>
-    <div class="col-6 col-md-3">
-        <div class="card text-center">
+    <div class="col">
+        <div class="card stat-carte text-center h-100">
             <div class="card-body">
-                <h5 class="card-title">{{ stats.nb_bouteilles }}</h5>
-                <p class="card-text text-muted">Bouteille(s)</p>
+                <div class="stat-valeur">{{ stats.nb_bouteilles }}</div>
+                <p class="stat-label mb-0">Bouteille(s)</p>
             </div>
         </div>
     </div>
-    <div class="col-6 col-md-3">
-        <div class="card text-center">
+    <div class="col">
+        <div class="card stat-carte text-center h-100">
             <div class="card-body">
-                <h5 class="card-title">{{ "%.2f"|format(stats.valeur_totale) }} €</h5>
-                <p class="card-text text-muted">Valeur totale</p>
+                <div class="stat-valeur">{{ "%.0f"|format(stats.valeur_totale) }} €</div>
+                <p class="stat-label mb-0">Valeur totale</p>
             </div>
         </div>
     </div>
-    <div class="col-6 col-md-3">
-        <div class="card text-center">
+    <div class="col">
+        <div class="card stat-carte text-center h-100">
             <div class="card-body">
-                <h5 class="card-title">
+                {% if stats.repartition_couleurs %}
+                <div class="stat-repartition mb-1">
                     {% for couleur, total in stats.repartition_couleurs.items() %}
-                        {{ couleur }}: {{ total }}{% if not loop.last %} · {% endif %}
+                    <span class="puce-couleur" style="--couleur-puce: var(--couleur-puce-{{ couleur|lower }});">{{ couleur }} {{ total }}</span>
                     {% endfor %}
-                </h5>
-                <p class="card-text text-muted">Répartition</p>
+                </div>
+                {% else %}
+                <div class="stat-valeur">–</div>
+                {% endif %}
+                <p class="stat-label mb-0">Répartition</p>
             </div>
         </div>
     </div>
@@ -58,13 +62,16 @@
 </a>
 {% endif %}
 
-<h1>Ma cave 🍷</h1>
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <h1 class="mb-0">Ma cave 🍷</h1>
+    <a href="/bouteilles/ajouter" class="btn btn-cave-accent btn-nav">+ Ajouter une bouteille</a>
+</div>
 
-<form method="GET" action="/" class="mb-4">
+<form method="GET" action="/" class="mb-4 mt-3">
     <div class="input-group">
         <input type="text" class="form-control" name="recherche"
                placeholder="Rechercher par nom ou domaine..." value="{{ recherche or '' }}">
-        <button class="btn btn-outline-secondary" type="submit">🔍 Rechercher</button>
+        <button class="btn btn-outline-secondary" type="submit">🔍</button>
         {% if recherche %}
         <a href="/" class="btn btn-outline-secondary">✕ Effacer</a>
         {% endif %}
