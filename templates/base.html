@@ -159,9 +159,13 @@
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse flex-grow-0" id="menuMobile">
-                <div class="d-flex flex-column flex-lg-row gap-2 mt-3 mt-lg-0">
-                    <a class="btn btn-outline-light" href="/historique">Historique</a>
-                    <a class="btn btn-cave-accent" href="/bouteilles/ajouter">+ Ajouter une bouteille</a>
+                <div class="d-flex flex-column flex-lg-row align-items-lg-center gap-2 mt-3 mt-lg-0">
+                    {% if session.user_id %}
+                        <a class="btn btn-outline-light" href="/historique">Historique</a>
+                        <a class="btn btn-cave-accent" href="/bouteilles/ajouter">+ Ajouter une bouteille</a>
+                        <span class="text-white ms-lg-2">{{ session.user_nom }}</span>
+                        <a class="btn btn-outline-light btn-sm" href="/deconnexion">Déconnexion</a>
+                    {% endif %}
                 </div>
             </div>
         </div>

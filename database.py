@@ -1,25 +1,72 @@
-import sqlite3
 import os
+from urllib.parse import urlparse
+import ssl
+import pg8000.dbapi
 from datetime import datetime
+from werkzeug.security import generate_password_hash, check_password_hash
 
-# En local, la base reste "cave.db" dans le dossier du projet (comportement inchangé).
-# En production sur Render, on définira DB_PATH pour pointer vers le disque persistant.
-DB_PATH = os.environ.get("DB_PATH", "cave.db")
+# En local comme en production, on se connecte à la même base PostgreSQL
+# (Render fournit une "External Database URL" utilisable depuis ta machine).
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+if isinstance(DATABASE_URL, bytes):
+    DATABASE_URL = DATABASE_URL.decode("utf-8")
+
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL n'est pas définie. Vérifie que ton fichier .env contient bien "
+        "une ligne DATABASE_URL=... et qu'il se trouve à la racine du projet."
+    )
+
 
 def get_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
+    url = urlparse(DATABASE_URL)
+    contexte_ssl = ssl.create_default_context()
+    conn = pg8000.dbapi.connect(
+        user=url.username,
+        password=url.password,
+        host=url.hostname,
+        port=url.port or 5432,
+        database=url.path.lstrip("/"),
+        ssl_context=contexte_ssl,
+    )
     return conn
+
+
+def _en_dict(cursor, ligne):
+    """pg8000 renvoie les lignes comme des tuples ; on les convertit en dict
+    pour garder le même style d'accès (ligne["colonne"]) que le reste du code."""
+    if ligne is None:
+        return None
+    colonnes = [desc[0] for desc in cursor.description]
+    return dict(zip(colonnes, ligne))
+
+
+def _fetchone(cursor):
+    return _en_dict(cursor, cursor.fetchone())
+
+
+def _fetchall(cursor):
+    colonnes = [desc[0] for desc in cursor.description]
+    return [dict(zip(colonnes, ligne)) for ligne in cursor.fetchall()]
 
 
 def init_db():
     conn = get_connection()
     cursor = conn.cursor()
 
+    # La table des comptes doit exister avant qu'on y fasse référence depuis "bouteilles"
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            nom TEXT NOT NULL UNIQUE,
+            pin_hash TEXT NOT NULL
+        )
+    """)
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS bouteilles (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             nom TEXT NOT NULL,
             domaine TEXT,
             appellation TEXT,
@@ -36,26 +83,21 @@ def init_db():
         )
     """)
 
-    # Filet de sécurité si la table existait déjà sans la colonne "statut"
-    try:
-        cursor.execute("ALTER TABLE bouteilles ADD COLUMN statut TEXT NOT NULL DEFAULT 'active'")
-    except sqlite3.OperationalError:
-        pass
-
-    # Filet de sécurité si la table existait déjà sans la colonne "note_etoiles"
-    try:
-        cursor.execute("ALTER TABLE bouteilles ADD COLUMN note_etoiles INTEGER NOT NULL DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass
+    # PostgreSQL gère nativement le "ajoute la colonne si elle n'existe pas",
+    # donc plus besoin du try/except qu'il fallait faire avec SQLite.
+    cursor.execute("ALTER TABLE bouteilles ADD COLUMN IF NOT EXISTS statut TEXT NOT NULL DEFAULT 'active'")
+    cursor.execute("ALTER TABLE bouteilles ADD COLUMN IF NOT EXISTS note_etoiles INTEGER NOT NULL DEFAULT 0")
+    # Chaque bouteille appartient à un compte. Nullable pour l'instant : les bouteilles
+    # créées avant l'ajout des comptes seront rattachées à Christophe par creer_utilisateurs().
+    cursor.execute("ALTER TABLE bouteilles ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS cepages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             nom TEXT NOT NULL UNIQUE
         )
     """)
 
-    # Quelles couleurs de vin utilisent ce cépage (un cépage peut concerner plusieurs couleurs)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS cepage_couleurs (
             cepage_id INTEGER NOT NULL,
@@ -65,7 +107,6 @@ def init_db():
         )
     """)
 
-    # Liaison bouteille <-> cépages (plusieurs-à-plusieurs)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS bouteille_cepages (
             bouteille_id INTEGER NOT NULL,
@@ -80,12 +121,69 @@ def init_db():
     conn.close()
 
 
+def creer_utilisateurs():
+    """Crée les comptes Christophe et Pierre s'ils n'existent pas encore, à partir
+    des PIN définis en variables d'environnement (PIN_CHRISTOPHE, PIN_PIERRE).
+    Rattache aussi à Christophe les bouteilles déjà en base avant l'ajout des comptes."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    comptes = [
+        ("Christophe", os.environ.get("PIN_CHRISTOPHE")),
+        ("Pierre", os.environ.get("PIN_PIERRE")),
+    ]
+
+    for nom, pin in comptes:
+        if not pin:
+            continue  # variable pas encore définie : on ne crée pas le compte pour l'instant
+        cursor.execute("SELECT id FROM users WHERE nom = %s", (nom,))
+        if _fetchone(cursor) is None:
+            cursor.execute(
+                "INSERT INTO users (nom, pin_hash) VALUES (%s, %s)",
+                (nom, generate_password_hash(pin))
+            )
+    conn.commit()
+
+    cursor.execute("SELECT id FROM users WHERE nom = %s", ("Christophe",))
+    christophe = _fetchone(cursor)
+    if christophe:
+        cursor.execute(
+            "UPDATE bouteilles SET user_id = %s WHERE user_id IS NULL",
+            (christophe["id"],)
+        )
+        conn.commit()
+
+    conn.close()
+
+
+def get_utilisateurs():
+    """Liste des comptes existants, pour l'écran de connexion."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, nom FROM users ORDER BY id")
+    utilisateurs = _fetchall(cursor)
+    conn.close()
+    return utilisateurs
+
+
+def verifier_pin(nom, pin):
+    """Vérifie le PIN d'un compte. Retourne son id si correct, None sinon."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, pin_hash FROM users WHERE nom = %s", (nom,))
+    utilisateur = _fetchone(cursor)
+    conn.close()
+    if utilisateur and check_password_hash(utilisateur["pin_hash"], pin):
+        return utilisateur["id"]
+    return None
+
+
 def peupler_cepages():
     """Remplit la liste des cépages courants avec leurs couleurs associées, si la table est vide."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM cepages")
-    if cursor.fetchone()[0] == 0:
+    cursor.execute("SELECT COUNT(*) as nb FROM cepages")
+    if _fetchone(cursor)["nb"] == 0:
         cepages_courants = {
             "Cabernet Sauvignon": ["Rouge", "Rosé"],
             "Merlot": ["Rouge", "Rosé"],
@@ -110,11 +208,11 @@ def peupler_cepages():
             "Muscat": ["Blanc", "Effervescent"],
         }
         for nom, couleurs in cepages_courants.items():
-            cursor.execute("INSERT INTO cepages (nom) VALUES (?)", (nom,))
-            cepage_id = cursor.lastrowid
+            cursor.execute("INSERT INTO cepages (nom) VALUES (%s) RETURNING id", (nom,))
+            cepage_id = _fetchone(cursor)["id"]
             for couleur in couleurs:
                 cursor.execute(
-                    "INSERT INTO cepage_couleurs (cepage_id, couleur) VALUES (?, ?)",
+                    "INSERT INTO cepage_couleurs (cepage_id, couleur) VALUES (%s, %s)",
                     (cepage_id, couleur)
                 )
         conn.commit()
@@ -122,16 +220,16 @@ def peupler_cepages():
 
 
 def get_tous_cepages_avec_couleurs():
-    """Retourne tous les cépages avec la liste des couleurs auxquelles ils sont associés."""
+    """Retourne tous les cépages avec la liste des couleurs auxquelles ils sont associés (partagé entre comptes)."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM cepages ORDER BY nom")
-    cepages = cursor.fetchall()
+    cepages = _fetchall(cursor)
 
     resultat = []
     for c in cepages:
-        cursor.execute("SELECT couleur FROM cepage_couleurs WHERE cepage_id = ?", (c["id"],))
-        couleurs = [row["couleur"] for row in cursor.fetchall()]
+        cursor.execute("SELECT couleur FROM cepage_couleurs WHERE cepage_id = %s", (c["id"],))
+        couleurs = [row["couleur"] for row in _fetchall(cursor)]
         resultat.append({"id": c["id"], "nom": c["nom"], "couleurs": couleurs})
 
     conn.close()
@@ -144,10 +242,10 @@ def get_cepages_bouteille(bouteille_id):
     cursor.execute("""
         SELECT c.id, c.nom FROM cepages c
         JOIN bouteille_cepages bc ON bc.cepage_id = c.id
-        WHERE bc.bouteille_id = ?
+        WHERE bc.bouteille_id = %s
         ORDER BY c.nom
     """, (bouteille_id,))
-    cepages = cursor.fetchall()
+    cepages = _fetchall(cursor)
     conn.close()
     return cepages
 
@@ -155,25 +253,26 @@ def get_cepages_bouteille(bouteille_id):
 def lier_cepages_bouteille(bouteille_id, cepage_ids):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM bouteille_cepages WHERE bouteille_id = ?", (bouteille_id,))
+    cursor.execute("DELETE FROM bouteille_cepages WHERE bouteille_id = %s", (bouteille_id,))
     for cid in cepage_ids:
         cursor.execute(
-            "INSERT INTO bouteille_cepages (bouteille_id, cepage_id) VALUES (?, ?)",
+            "INSERT INTO bouteille_cepages (bouteille_id, cepage_id) VALUES (%s, %s)",
             (bouteille_id, cid)
         )
     conn.commit()
     conn.close()
 
 
-def ajouter_bouteille(nom, domaine, appellation, couleur, millesime, quantite, prix,
+def ajouter_bouteille(user_id, nom, domaine, appellation, couleur, millesime, quantite, prix,
                        emplacement, note, annee_debut, annee_fin, cepage_ids=None):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO bouteilles (nom, domaine, appellation, couleur, millesime, quantite, prix, emplacement, note, annee_a_boire_debut, annee_a_boire_fin)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (nom, domaine, appellation, couleur, millesime, quantite, prix, emplacement, note, annee_debut, annee_fin))
-    nouvel_id = cursor.lastrowid
+        INSERT INTO bouteilles (user_id, nom, domaine, appellation, couleur, millesime, quantite, prix, emplacement, note, annee_a_boire_debut, annee_a_boire_fin)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
+    """, (user_id, nom, domaine, appellation, couleur, millesime, quantite, prix, emplacement, note, annee_debut, annee_fin))
+    nouvel_id = _fetchone(cursor)["id"]
     conn.commit()
     conn.close()
 
@@ -183,8 +282,8 @@ def ajouter_bouteille(nom, domaine, appellation, couleur, millesime, quantite, p
     return nouvel_id
 
 
-def get_toutes_bouteilles(recherche=None):
-    """Ne retourne que les bouteilles actives. Si 'recherche' est fourni, filtre sur nom ou domaine."""
+def get_toutes_bouteilles(user_id, recherche=None):
+    """Ne retourne que les bouteilles actives de cet utilisateur. Si 'recherche' est fourni, filtre sur nom ou domaine."""
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -192,125 +291,128 @@ def get_toutes_bouteilles(recherche=None):
         motif = f"%{recherche}%"
         cursor.execute("""
             SELECT * FROM bouteilles
-            WHERE statut = 'active'
-            AND (nom LIKE ? OR domaine LIKE ?)
+            WHERE statut = 'active' AND user_id = %s
+            AND (nom ILIKE %s OR domaine ILIKE %s)
             ORDER BY nom
-        """, (motif, motif))
+        """, (user_id, motif, motif))
     else:
-        cursor.execute("SELECT * FROM bouteilles WHERE statut = 'active' ORDER BY nom")
+        cursor.execute("SELECT * FROM bouteilles WHERE statut = 'active' AND user_id = %s ORDER BY nom", (user_id,))
 
-    bouteilles = cursor.fetchall()
+    bouteilles = _fetchall(cursor)
     conn.close()
     return bouteilles
 
 
-def get_historique():
-    """Retourne les bouteilles terminées (bues en totalité)."""
+def get_historique(user_id):
+    """Retourne les bouteilles terminées (bues en totalité) de cet utilisateur."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM bouteilles WHERE statut = 'terminee' ORDER BY nom")
-    bouteilles = cursor.fetchall()
+    cursor.execute("SELECT * FROM bouteilles WHERE statut = 'terminee' AND user_id = %s ORDER BY nom", (user_id,))
+    bouteilles = _fetchall(cursor)
     conn.close()
     return bouteilles
 
 
-def get_bouteille_par_id(id_bouteille):
+def get_bouteille_par_id(id_bouteille, user_id):
+    """Ne renvoie la bouteille que si elle appartient à cet utilisateur (sinon None)."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM bouteilles WHERE id = ?", (id_bouteille,))
-    bouteille = cursor.fetchone()
+    cursor.execute("SELECT * FROM bouteilles WHERE id = %s AND user_id = %s", (id_bouteille, user_id))
+    bouteille = _fetchone(cursor)
     conn.close()
     return bouteille
 
 
-def modifier_bouteille(id_bouteille, nom, domaine, appellation, couleur, millesime, quantite,
+def modifier_bouteille(id_bouteille, user_id, nom, domaine, appellation, couleur, millesime, quantite,
                         prix, emplacement, note, annee_debut, annee_fin, cepage_ids=None):
     statut = "terminee" if int(quantite) <= 0 else "active"
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
         UPDATE bouteilles
-        SET nom = ?, domaine = ?, appellation = ?, couleur = ?, millesime = ?,
-            quantite = ?, prix = ?, emplacement = ?, note = ?,
-            annee_a_boire_debut = ?, annee_a_boire_fin = ?, statut = ?
-        WHERE id = ?
+        SET nom = %s, domaine = %s, appellation = %s, couleur = %s, millesime = %s,
+            quantite = %s, prix = %s, emplacement = %s, note = %s,
+            annee_a_boire_debut = %s, annee_a_boire_fin = %s, statut = %s
+        WHERE id = %s AND user_id = %s
     """, (nom, domaine, appellation, couleur, millesime, quantite, prix, emplacement, note,
-          annee_debut, annee_fin, statut, id_bouteille))
+          annee_debut, annee_fin, statut, id_bouteille, user_id))
     conn.commit()
     conn.close()
 
     lier_cepages_bouteille(id_bouteille, cepage_ids or [])
 
 
-def supprimer_bouteille(id_bouteille):
+def supprimer_bouteille(id_bouteille, user_id):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM bouteilles WHERE id = ?", (id_bouteille,))
+    cursor.execute("DELETE FROM bouteilles WHERE id = %s AND user_id = %s", (id_bouteille, user_id))
     conn.commit()
     conn.close()
 
 
-def retirer_une_bouteille(id_bouteille):
+def retirer_une_bouteille(id_bouteille, user_id):
     """Diminue la quantité de 1. Passe la bouteille en statut 'terminee' quand elle atteint 0 (au lieu de la supprimer)."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT quantite FROM bouteilles WHERE id = ?", (id_bouteille,))
-    resultat = cursor.fetchone()
+    cursor.execute("SELECT quantite FROM bouteilles WHERE id = %s AND user_id = %s", (id_bouteille, user_id))
+    resultat = _fetchone(cursor)
 
     if resultat and resultat["quantite"] > 1:
-        cursor.execute("UPDATE bouteilles SET quantite = quantite - 1 WHERE id = ?", (id_bouteille,))
+        cursor.execute("UPDATE bouteilles SET quantite = quantite - 1 WHERE id = %s AND user_id = %s", (id_bouteille, user_id))
     elif resultat:
-        cursor.execute("UPDATE bouteilles SET quantite = 0, statut = 'terminee' WHERE id = ?", (id_bouteille,))
+        cursor.execute("UPDATE bouteilles SET quantite = 0, statut = 'terminee' WHERE id = %s AND user_id = %s", (id_bouteille, user_id))
 
     conn.commit()
     conn.close()
 
-def noter_bouteille(id_bouteille, note_etoiles):
+
+def noter_bouteille(id_bouteille, user_id, note_etoiles):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("UPDATE bouteilles SET note_etoiles = ? WHERE id = ?", (note_etoiles, id_bouteille))
+    cursor.execute("UPDATE bouteilles SET note_etoiles = %s WHERE id = %s AND user_id = %s", (note_etoiles, id_bouteille, user_id))
     conn.commit()
     conn.close()
 
 
-def get_bouteilles_a_boire_bientot():
+def get_bouteilles_a_boire_bientot(user_id):
     annee_actuelle = datetime.now().year
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
         SELECT * FROM bouteilles
-        WHERE statut = 'active'
+        WHERE statut = 'active' AND user_id = %s
         AND annee_a_boire_fin IS NOT NULL
-        AND annee_a_boire_fin <= ?
+        AND annee_a_boire_fin <= %s
         ORDER BY annee_a_boire_fin ASC
-    """, (annee_actuelle + 1,))
-    bouteilles = cursor.fetchall()
+    """, (user_id, annee_actuelle + 1))
+    bouteilles = _fetchall(cursor)
     conn.close()
     return bouteilles
 
-def get_statistiques():
-    """Calcule les statistiques globales de la cave (bouteilles actives uniquement)."""
+
+def get_statistiques(user_id):
+    """Calcule les statistiques globales de la cave de cet utilisateur (bouteilles actives uniquement)."""
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT COUNT(*) as nb FROM bouteilles WHERE statut = 'active'")
-    nb_references = cursor.fetchone()["nb"]
+    cursor.execute("SELECT COUNT(*) as nb FROM bouteilles WHERE statut = 'active' AND user_id = %s", (user_id,))
+    nb_references = _fetchone(cursor)["nb"]
 
-    cursor.execute("SELECT COALESCE(SUM(quantite), 0) as total FROM bouteilles WHERE statut = 'active'")
-    nb_bouteilles = cursor.fetchone()["total"]
+    cursor.execute("SELECT COALESCE(SUM(quantite), 0) as total FROM bouteilles WHERE statut = 'active' AND user_id = %s", (user_id,))
+    nb_bouteilles = _fetchone(cursor)["total"]
 
     cursor.execute("""
         SELECT COALESCE(SUM(prix * quantite), 0) as total
-        FROM bouteilles WHERE statut = 'active' AND prix IS NOT NULL
-    """)
-    valeur_totale = cursor.fetchone()["total"]
+        FROM bouteilles WHERE statut = 'active' AND user_id = %s AND prix IS NOT NULL
+    """, (user_id,))
+    valeur_totale = _fetchone(cursor)["total"]
 
     cursor.execute("""
         SELECT couleur, COALESCE(SUM(quantite), 0) as total
-        FROM bouteilles WHERE statut = 'active'
+        FROM bouteilles WHERE statut = 'active' AND user_id = %s
         GROUP BY couleur
-    """)
-    repartition_couleurs = {row["couleur"]: row["total"] for row in cursor.fetchall()}
+    """, (user_id,))
+    repartition_couleurs = {row["couleur"]: row["total"] for row in _fetchall(cursor)}
 
     conn.close()
     return {
@@ -324,4 +426,5 @@ def get_statistiques():
 if __name__ == "__main__":
     init_db()
     peupler_cepages()
+    creer_utilisateurs()
     print("Base de données initialisée avec succès !")

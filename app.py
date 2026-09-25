@@ -1,10 +1,12 @@
-from flask import Flask, render_template, request, redirect, jsonify
+from flask import Flask, render_template, request, redirect, jsonify, session, url_for, abort
+from functools import wraps
 from datetime import datetime
 import database
 
 from dotenv import load_dotenv
 load_dotenv()
 
+import os
 import anthropic
 import base64
 import json
@@ -13,18 +15,67 @@ import unicodedata
 client_anthropic = anthropic.Anthropic()  # lit automatiquement ANTHROPIC_API_KEY
 
 # S'assure que la base est prête au démarrage (utile en production,
-# où le fichier cave.db peut ne pas encore exister)
+# où la base peut ne pas encore exister)
 database.init_db()
 database.peupler_cepages()
+database.creer_utilisateurs()
 
 app = Flask(__name__)
 
+app.secret_key = os.environ.get("SECRET_KEY")
+if not app.secret_key:
+    raise RuntimeError(
+        "SECRET_KEY n'est pas définie. Ajoute une ligne SECRET_KEY=... dans ton .env "
+        "(une longue chaîne aléatoire, ex. générée avec : "
+        "python -c \"import secrets; print(secrets.token_hex(32))\")."
+    )
+
+
+def connexion_requise(route):
+    """Redirige vers l'écran de connexion si personne n'est connecté dans cette session."""
+    @wraps(route)
+    def route_protegee(*args, **kwargs):
+        if "user_id" not in session:
+            return redirect(url_for("connexion"))
+        return route(*args, **kwargs)
+    return route_protegee
+
+
+@app.route("/connexion", methods=["GET", "POST"])
+def connexion():
+    if "user_id" in session:
+        return redirect("/")
+
+    utilisateurs = database.get_utilisateurs()
+    erreur = None
+
+    if request.method == "POST":
+        nom = request.form["nom"]
+        pin = request.form["pin"]
+        user_id = database.verifier_pin(nom, pin)
+        if user_id:
+            session["user_id"] = user_id
+            session["user_nom"] = nom
+            return redirect("/")
+        erreur = "Code incorrect, réessaie."
+
+    return render_template("connexion.html", utilisateurs=utilisateurs, erreur=erreur)
+
+
+@app.route("/deconnexion")
+def deconnexion():
+    session.clear()
+    return redirect(url_for("connexion"))
+
+
 @app.route("/")
+@connexion_requise
 def accueil():
+    user_id = session["user_id"]
     recherche = request.args.get("recherche", "").strip()
-    bouteilles = database.get_toutes_bouteilles(recherche=recherche or None)
-    a_boire_bientot = database.get_bouteilles_a_boire_bientot()
-    stats = database.get_statistiques()
+    bouteilles = database.get_toutes_bouteilles(user_id, recherche=recherche or None)
+    a_boire_bientot = database.get_bouteilles_a_boire_bientot(user_id)
+    stats = database.get_statistiques(user_id)
     return render_template("liste.html", bouteilles=bouteilles,
                             a_boire_bientot=a_boire_bientot[:3],
                             nb_a_boire_bientot=len(a_boire_bientot),
@@ -32,20 +83,25 @@ def accueil():
 
 
 @app.route("/historique")
+@connexion_requise
 def historique():
-    bouteilles = database.get_historique()
+    bouteilles = database.get_historique(session["user_id"])
     return render_template("historique.html", bouteilles=bouteilles)
 
 @app.route("/a-boire-bientot")
+@connexion_requise
 def a_boire_bientot_complet():
-    bouteilles = database.get_bouteilles_a_boire_bientot()
+    bouteilles = database.get_bouteilles_a_boire_bientot(session["user_id"])
     return render_template("a_boire_bientot.html", bouteilles=bouteilles)
 
 @app.route("/bouteilles/ajouter", methods=["GET", "POST"])
+@connexion_requise
 def ajouter():
+    user_id = session["user_id"]
     if request.method == "POST":
         cepage_ids = [int(cid) for cid in request.form.getlist("cepages")]
         database.ajouter_bouteille(
+            user_id=user_id,
             nom=request.form["nom"],
             domaine=request.form["domaine"] or None,
             appellation=request.form["appellation"] or None,
@@ -68,18 +124,25 @@ def ajouter():
 
 
 @app.route("/bouteilles/<int:id_bouteille>")
+@connexion_requise
 def detail(id_bouteille):
-    bouteille = database.get_bouteille_par_id(id_bouteille)
+    bouteille = database.get_bouteille_par_id(id_bouteille, session["user_id"])
+    if bouteille is None:
+        abort(404)
     cepages = database.get_cepages_bouteille(id_bouteille)
     return render_template("detail.html", bouteille=bouteille, cepages=cepages)
 
 
 @app.route("/bouteilles/<int:id_bouteille>/modifier", methods=["GET", "POST"])
+@connexion_requise
 def modifier(id_bouteille):
+    user_id = session["user_id"]
+
     if request.method == "POST":
         cepage_ids = [int(cid) for cid in request.form.getlist("cepages")]
         database.modifier_bouteille(
             id_bouteille,
+            user_id,
             nom=request.form["nom"],
             domaine=request.form["domaine"] or None,
             appellation=request.form["appellation"] or None,
@@ -95,7 +158,9 @@ def modifier(id_bouteille):
         )
         return redirect(f"/bouteilles/{id_bouteille}")
 
-    bouteille = database.get_bouteille_par_id(id_bouteille)
+    bouteille = database.get_bouteille_par_id(id_bouteille, user_id)
+    if bouteille is None:
+        abort(404)
     cepages = database.get_tous_cepages_avec_couleurs()
     cepages_selectionnes = [c["id"] for c in database.get_cepages_bouteille(id_bouteille)]
     return render_template("formulaire.html", bouteille=bouteille, cepages=cepages,
@@ -103,17 +168,20 @@ def modifier(id_bouteille):
 
 
 @app.route("/bouteilles/<int:id_bouteille>/supprimer", methods=["POST"])
+@connexion_requise
 def supprimer(id_bouteille):
-    database.supprimer_bouteille(id_bouteille)
+    database.supprimer_bouteille(id_bouteille, session["user_id"])
     return redirect("/")
 
 
 @app.route("/bouteilles/<int:id_bouteille>/retirer", methods=["POST"])
+@connexion_requise
 def retirer(id_bouteille):
-    database.retirer_une_bouteille(id_bouteille)
+    database.retirer_une_bouteille(id_bouteille, session["user_id"])
     return redirect("/")
 
 @app.route("/bouteilles/<int:id_bouteille>/noter", methods=["POST"])
+@connexion_requise
 def noter(id_bouteille):
     donnees = request.get_json(silent=True) or {}
 
@@ -125,7 +193,7 @@ def noter(id_bouteille):
     if note < 0 or note > 5:
         return jsonify({"succes": False, "erreur": "La note doit être entre 0 et 5"}), 400
 
-    database.noter_bouteille(id_bouteille, note)
+    database.noter_bouteille(id_bouteille, session["user_id"], note)
     return jsonify({"succes": True, "note": note})
 
 def normaliser(texte):
@@ -147,6 +215,7 @@ def nettoyer_json(texte):
 
 
 @app.route("/scan-etiquette", methods=["POST"])
+@connexion_requise
 def scan_etiquette():
     fichier = request.files.get("photo")
     if not fichier:

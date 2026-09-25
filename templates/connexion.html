@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block contenu %}
+<div class="d-flex justify-content-center">
+  <div class="card p-4" style="max-width: 400px; width: 100%;">
+    <h1 class="h4 text-center mb-4">Qui es-tu ?</h1>
+
+    {% if erreur %}
+      <div class="alert alert-warning">{{ erreur }}</div>
+    {% endif %}
+
+    <form method="POST">
+      <div class="mb-3">
+        <label class="form-label">Compte</label>
+        <select name="nom" class="form-select" required>
+          {% for u in utilisateurs %}
+            <option value="{{ u.nom }}">{{ u.nom }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Code PIN</label>
+        <input type="password" name="pin" inputmode="numeric" pattern="[0-9]*"
+               class="form-control form-control-lg text-center" placeholder="••••" required autofocus>
+      </div>
+      <button type="submit" class="btn btn-primary w-100">Se connecter</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
