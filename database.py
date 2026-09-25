@@ -22,6 +22,10 @@ if not DATABASE_URL:
 def get_connection():
     url = urlparse(DATABASE_URL)
     contexte_ssl = ssl.create_default_context()
+    # La base Render présente un certificat auto-signé : on chiffre la connexion
+    # mais sans exiger une chaîne de confiance validée (équivalent de sslmode=require).
+    contexte_ssl.check_hostname = False
+    contexte_ssl.verify_mode = ssl.CERT_NONE
     conn = pg8000.dbapi.connect(
         user=url.username,
         password=url.password,
@@ -122,15 +126,15 @@ def init_db():
 
 
 def creer_utilisateurs():
-    """Crée les comptes Christophe et Pierre s'ils n'existent pas encore, à partir
-    des PIN définis en variables d'environnement (PIN_CHRISTOPHE, PIN_PIERRE).
+    """Crée les comptes Christophe et Papa s'ils n'existent pas encore, à partir
+    des PIN définis en variables d'environnement (PIN_CHRISTOPHE, PIN_PAPA).
     Rattache aussi à Christophe les bouteilles déjà en base avant l'ajout des comptes."""
     conn = get_connection()
     cursor = conn.cursor()
 
     comptes = [
         ("Christophe", os.environ.get("PIN_CHRISTOPHE")),
-        ("Pierre", os.environ.get("PIN_PIERRE")),
+        ("Papa", os.environ.get("PIN_PAPA")),
     ]
 
     for nom, pin in comptes:
