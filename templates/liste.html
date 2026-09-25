@@ -62,12 +62,12 @@
 </a>
 {% endif %}
 
-<div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+<div class="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center justify-content-sm-between gap-3 gap-sm-2 mb-3">
     <h1 class="mb-0">Ma cave 🍷</h1>
     <a href="/bouteilles/ajouter" class="btn btn-cave-accent btn-nav">+ Ajouter une bouteille</a>
 </div>
 
-<form method="GET" action="/" class="mb-4 mt-3">
+<form method="GET" action="/" class="mb-4">
     <div class="input-group">
         <input type="text" class="form-control" name="recherche"
                placeholder="Rechercher par nom ou domaine..." value="{{ recherche or '' }}">
